@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./bot
+      target: dev
+    volumes:
+      - ./bot:/app
+      - bot_tmp:/app/tmp
+    env_file:
+      - ./bot/.env
+    environment:
+      - DB_URL=postgres://postgres:postgres@postgres:5432/bot?sslmode=disable
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  scraper:
+    build:
+      context: ./bot
+      target: dev
+    volumes:
+      - ./bot:/app
+      - bot_tmp:/app/tmp
+    env_file:
+      - ./bot/.env
+    environment:
+      - DB_URL=postgres://postgres:postgres@postgres:5432/bot?sslmode=disable
+      - BOT_BROADCAST_URL=http://backend:8080/broadcast
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    command: ["go", "run", "./cmd/scraper"]
+
+
+volumes:
+  postgres_data:
+  bot_tmp:

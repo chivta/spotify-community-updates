@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bot 
+  namespace: spotify-community-updates
+  labels:
+    app: bot
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector: 
+    matchLabels:
+      app: bot 
+  template:
+    metadata:
+      labels:
+        app: bot
+    spec:
+      containers:
+        - name: bot
+          image: ghcr.io/chivta/spotify-community-updates:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: app-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      imagePullSecrets:
+        - name: ghcr-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bot-svc
+  namespace: spotify-community-updates
+  labels:
+    app: bot
+spec:
+  selector:
+    app: bot  
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP

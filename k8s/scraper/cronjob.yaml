@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: scraper
+  namespace: spotify-community-updates
+  labels:
+    app: scraper
+spec:
+  schedule: "0 18 * * *"  # every day
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            app: scraper
+        spec:
+          restartPolicy: OnFailure
+          imagePullSecrets:
+            - name: ghcr-secret
+          containers:
+            - name: scraper
+              image: ghcr.io/chivta/spotify-community-updates:latest
+              command: ["./scraper"]
+              envFrom:
+                - secretRef:
+                    name: app-secrets
+              env:
+                - name: BOT_BROADCAST_URL
+                  value: "http://bot-svc:8080/broadcast"
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
