@@ -4,17 +4,25 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
 const (
-	spotifyCommunityURL = "https://developer.spotify.com/_next/data/B5Xg_Lj2Q5kwbhVosO17X/community.json"
+	spotifyCommunityPageURL = "https://developer.spotify.com/community"
+	// Next.js serves page data under a build ID that changes on every site
+	// deploy, so the ID is read from the page before each fetch.
+	spotifyCommunityDataURLFormat = "https://developer.spotify.com/_next/data/%s/community.json"
 )
+
+var buildIDPattern = regexp.MustCompile(`"buildId":"([^"]+)"`)
 
 type data struct {
 	PageProps struct {
@@ -37,7 +45,12 @@ func main() {
 		panic(err)
 	}
 
-	resp, err := http.Get(spotifyCommunityURL)
+	buildID, err := fetchBuildID()
+	if err != nil {
+		log.Fatalf("Failed to read Spotify Community build ID: %v", err)
+	}
+
+	resp, err := http.Get(fmt.Sprintf(spotifyCommunityDataURLFormat, buildID))
 	if err != nil {
 		log.Fatalf("Failed to fetch Spotify Community page: %v", err)
 	}
@@ -58,7 +71,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to marshal updates: %v", err)
 	}
-	resp, err = http.Post(os.Getenv("BOT_BROADCAST_URL"), "application/json",bytes.NewReader(body))
+	resp, err = http.Post(os.Getenv("BOT_BROADCAST_URL"), "application/json", bytes.NewReader(body))
 	if err != nil {
 		log.Fatalf("Failed to send updates to bot: %v", err)
 	}
@@ -98,4 +111,33 @@ func markUpdatesAsSent(posts []Post, conn *pgx.Conn) {
 			log.Printf("Failed to mark update %s as sent: %v", post.Slug, err)
 		}
 	}
+}
+
+// fetchBuildID loads the community page and returns the current Next.js build ID.
+func fetchBuildID() (string, error) {
+	resp, err := http.Get(spotifyCommunityPageURL)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	page, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return extractBuildID(page)
+}
+
+// extractBuildID finds the build ID in the page's __NEXT_DATA__ script.
+func extractBuildID(page []byte) (string, error) {
+	match := buildIDPattern.FindSubmatch(page)
+	if match == nil {
+		return "", fmt.Errorf("buildId not found in page")
+	}
+	return string(match[1]), nil
 }
