@@ -13,6 +13,9 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 3
+      # Past runs finish in under 30s. A Job that cannot start fails after 10m
+      # instead of staying active and blocking every later run under Forbid.
+      activeDeadlineSeconds: 600
       template:
         metadata:
           labels:
