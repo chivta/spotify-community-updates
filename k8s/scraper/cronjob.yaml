@@ -19,8 +19,6 @@ spec:
             app: scraper
         spec:
           restartPolicy: OnFailure
-          imagePullSecrets:
-            - name: ghcr-secret
           containers:
             - name: scraper
               image: ghcr.io/chivta/spotify-community-updates:latest
